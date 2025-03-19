@@ -8,23 +8,22 @@ class MyClient(discord.Client):
         super().__init__(intents=intents, **options)
         
         self.database = sqlite3.connect("discord_events.db")
-        self.cursor = self.database.cursor()
         self.database.execute("CREATE TABLE IF NOT EXISTS guilds(guild_id INT UNIQUE, guild_name TEXT, PRIMARY KEY (guild_id))")
         self.database.execute("CREATE TABLE IF NOT EXISTS scheduled_events(guild_id INT, event_id INT, event_name TEXT, role_id INT, PRIMARY KEY (guild_id, event_id))")
         
     async def on_ready(self):
             print(f'We have logged in as {self.user}')
             for guild in self.guilds:
-                self.database.execute("""INSERT INTO guilds (guild_id, guild_name)
+                self.database.execute("""INSERT INTO guilds(guild_id, guild_name)
                                          VALUES(?, ?)
-                                         ON CONFLICT (guild_id) 
+                                         ON CONFLICT(guild_id) 
                                          DO UPDATE SET guild_name=excluded.guild_name""", 
                                          (guild.id, guild.name))
                 self.database.commit()
                 for event in guild.scheduled_events:
                     if self.query_event(event=event) == None:
                         new_role = await self.create_event_role(event=event)
-                        self.database.execute("""INSERT INTO scheduled_events (guild_id, event_id, event_name, role_id) 
+                        self.database.execute("""INSERT INTO scheduled_events(guild_id, event_id, event_name, role_id) 
                                                  VALUES(?, ?, ?, ?)""", 
                                                  (guild.id, event.id, event.name, new_role.id))
                         self.database.commit()
@@ -39,8 +38,8 @@ class MyClient(discord.Client):
     async def add_event(self, event:discord.ScheduledEvent):
         new_role = await self.create_event_role(event=event)
         self.database.execute("""INSERT INTO scheduled_events (guild_id, event_id, event_name, role_id) 
-                                    VALUES(?, ?, ?, ?)""", 
-                                    (event.guild.id, event.id, event.name, new_role.id))
+                                 VALUES(?, ?, ?, ?)""", 
+                                 (event.guild.id, event.id, event.name, new_role.id))
         self.database.commit()
 
     def make_role_name(self, event: discord.ScheduledEvent):
