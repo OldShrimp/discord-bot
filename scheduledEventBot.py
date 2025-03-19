@@ -1,5 +1,4 @@
 import discord
-from discord.ext import tasks, commands
 import sqlite3
 
 
@@ -41,6 +40,13 @@ class MyClient(discord.Client):
                                  VALUES(?, ?, ?, ?)""", 
                                  (event.guild.id, event.id, event.name, new_role.id))
         self.database.commit()
+        
+    async def remove_event(self, event:discord.ScheduledEvent):
+        await event.guild.get_role(self.query_event(event=event)[3]).delete(reason=f"event {event.name} ended or cancelled, corresponding role deleted")
+        self.database.execute("""DELETE FROM scheduled_events
+                                    WHERE guild_id = ? AND event_id = ?""",
+                                    (event.guild.id, event.id))
+        self.database.commit()
 
     def make_role_name(self, event: discord.ScheduledEvent):
         role_name = event.name
@@ -64,15 +70,14 @@ class MyClient(discord.Client):
         if event_data == None:
             print("event was untracked")
         elif event.guild.get_role(event_data[3]) != None:
-            await event.guild.get_role(event_data[3]).delete(reason=f"event {event.name} ended or cancelled, corresponding role deleted")
-            self.database.execute("""DELETE FROM scheduled_events
-                                     WHERE guild_id = ? AND event_id = ?""",
-                                     (event.guild.id, event.id))
-            self.database.commit()
+            await self.remove_event(event=event)
     
     async def on_scheduled_event_update(self, before: discord.ScheduledEvent, after: discord.ScheduledEvent):
-        print(f'Event {before.name} updated.')
-        if before.name != after.name:
+        print(f'Event {before.name} updated to {after.name}.')
+        if after.status == discord.EventStatus.completed or after.status == discord.EventStatus.cancelled:
+            print(f'Event {after.name} ended or cancelled.')
+            await self.remove_event(event=after)
+        elif before.name != after.name:
             event_data = self.query_event(event=after)
             await after.guild.get_role(event_data[3]).edit(name=self.make_role_name(after))
             self.database.execute("""UPDATE scheduled_events
@@ -94,8 +99,8 @@ class MyClient(discord.Client):
             await event.guild.get_member(user.id).remove_roles(event.guild.get_role(event_data[3]))
 
 if __name__ == "__main__":
-    
-    intents = discord.Intents.all()
+    intents = discord.Intents.default()
+    intents.members = True
     client = MyClient(intents=intents)
     with open('token.txt') as token_file:
         client.run(token_file.read())
